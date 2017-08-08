@@ -1,0 +1,180 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using System.Web.Mvc;
+using System.Net.Mail;
+using System.Net;
+using PhotoGrapgy.Models;
+using System.Data.Entity.Validation;
+using System.Data.Entity.Infrastructure;
+
+namespace PhotoGrapgy.Controllers
+{
+    public class UserController : Controller
+    { // Registration action
+
+        public ActionResult Registration()
+        {
+
+            return View();
+        }
+
+
+        //Registration post action
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Registration([Bind(Exclude = "IsEmailVerified, ActivationCode")]User user)
+        {
+            bool Status = false;
+            string Message = "";
+            //Model Validation
+            if (ModelState.IsValid)
+            {
+                #region Email already exit
+                var isExist = IsEmailExist(user.EmailID);
+                if (isExist)
+                {
+                    ModelState.AddModelError("EmailExist", "Email already exist");
+                    return View(user);
+
+                }
+
+                #endregion
+
+                #region Generate Avtivation Code
+                user.ActivationCode = Guid.NewGuid();
+                #endregion
+
+
+                #region password hashing
+
+                user.Password = Crypto.Hash(user.Password);
+                user.ConfirmPassword = Crypto.Hash(user.Password);// becoz there should not be any compare validation issue
+                user.IsEmailVerified = false;
+                #endregion
+
+                #region save data
+                using (PhotoGrapgyDBEntities dc = new PhotoGrapgyDBEntities())
+                {
+                    dc.Users.Add(user);
+
+                    #region Exception
+                    try
+                    {
+                        dc.SaveChanges();
+                    }
+                    catch (DbEntityValidationException ex)
+                    {
+                        foreach (var entityValidationErrors in ex.EntityValidationErrors)
+                        {
+                            foreach (var validationError in entityValidationErrors.ValidationErrors)
+                            {
+                                Response.Write("Property: " + validationError.PropertyName + " Error: " + validationError.ErrorMessage);
+                            }
+                        }
+                    }
+                    #endregion
+
+
+
+
+
+
+                    //// Send Mail
+                    //SendVarificationLinkEmail(user.EmailID, user.ActivationCode.ToString());
+                    //Message = "registration Successfully done. Account activation link " + " has been send to your email id:" + user.EmailID;
+                    //Status = true;
+
+                }
+
+
+
+                #endregion
+
+
+            }
+            else
+            {
+                Message = "Invalid Request";
+
+            }
+
+            ViewBag.Message = Message;
+            ViewBag.Status = Status;
+
+            return View(user);
+        }
+
+        //Verify Email
+
+        //Verify Email Link
+
+
+        //Login action
+
+        //Login Post action
+
+        //Logout
+
+        [NonAction]
+        public bool IsEmailExist(string emailId)
+        {
+            using (PhotoGrapgyDBEntities dc = new PhotoGrapgyDBEntities())
+            {
+
+                var v = dc.Users.Where(a => a.EmailID == emailId).FirstOrDefault();
+
+                return v != null;
+            }
+
+        }
+
+
+        [NonAction]
+        public void SendVarificationLinkEmail(string email, string activationcode)
+        {
+            //// validate account
+            //var sceme = Request.Url.Scheme;
+            //var host = Request.Url.Host;
+            //var port = Request.Url.Port;
+            //string url = sceme + "://" + host;
+
+            var verifyUrl = "/User/VerifyAccount/" + activationcode;
+            var link = Request.Url.AbsoluteUri.Replace(Request.Url.PathAndQuery, verifyUrl);
+
+            var fromEmail = new MailAddress("amritamadh@gmail.com", "Photography");
+            var toEmail = new MailAddress(email);
+            var fromEmailPassword = "*********"; // Replace with actual password
+            string subject = "Your account is successfully created";
+
+            string body = "<br/><br/> We are exited to tell you that you your Photography accont is" + " successfully created, Please click on the below link to verify your account" + "<br/><br/><a href='" + link + "'>" + link + "</a>";
+
+            var setp = new SmtpClient
+            {
+                Host = "setp.gmail.com",
+                //Host = "127.0.0.1",
+                Port = 587,
+                EnableSsl = true,
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
+                Credentials = new NetworkCredential(fromEmail.Address, fromEmailPassword)
+            };
+
+            using (var message = new MailMessage(fromEmail, toEmail)
+            {
+                Subject = subject,
+                Body = body,
+                IsBodyHtml = true
+
+            })
+                setp.Send(message);
+
+
+        }
+
+
+
+
+        }
+}
